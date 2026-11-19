@@ -161,4 +161,20 @@ pip install -r requirements.txt
 Điền `.env`: `OPENROUTER_API_KEY` + `RED_TEAM_PROVIDER=openai|gemini` (và key tương ứng).  
 Rồi mở [`CHECKPOINTS.md`](CHECKPOINTS.md) và làm lần lượt Checkpoint 1 → 5.
 
+---
+
+## 4. Chat UI (tuỳ chọn)
+
+Giao diện chat cho khách hàng, chạy trên agent **Blue** với đúng bộ guardrails của bài lab. Mỗi câu trả lời hiển thị thêm huy hiệu kiểm tra an toàn (`ALLOW` / `BLOCK` / `REDACTED` / `ERROR`); bấm vào để xem từng lớp: giới hạn tốc độ, đầu vào, đầu ra.
+
+```bash
+python src/webui/server.py
+# mở http://127.0.0.1:8000
+```
+
+- Cần `OPENROUTER_API_KEY` trong `.env` (model Blue khóa cứng, không đổi được).
+- Verdict lấy từ chính các plugin thật (`RateLimitPlugin`, `InputGuardrailPlugin`, `OutputGuardrailPlugin`), không phải mô phỏng.
+- UI chỉ đọc, không ghi gì vào `outputs/`; không ảnh hưởng điểm CP2–CP4.
+- Tùy chọn: `--host`, `--port`, `--debug`, `--max-requests`, `--window-seconds`.
+
 Nộp theo [`SUBMISSION.md`](SUBMISSION.md) · Quy định: [`RULES.md`](RULES.md).
