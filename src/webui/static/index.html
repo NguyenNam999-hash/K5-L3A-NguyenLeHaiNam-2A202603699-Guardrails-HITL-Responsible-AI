@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>VinBank · Trợ lý số</title>
+<style>
+  :root {
+    --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --font-body: "Avenir Next", Avenir, "Segoe UI", Helvetica, sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+    --bg: #efe9db;
+    --bg-glow: rgba(15, 45, 71, 0.07);
+    --sheet: #fbf7ee;
+    --ink: #16232f;
+    --ink-soft: #5d6b74;
+    --rule: #ddd3c0;
+    --rule-strong: #c7b9a0;
+    --navy: #0f2d47;
+    --navy-ink: #f7f1e4;
+    --brass: #a67c2e;
+    --ok: #1f6f4a;
+    --bad: #a4302a;
+    --warn: #946410;
+    --neutral: #6b7780;
+    --shadow: 0 24px 60px -30px rgba(22, 35, 47, 0.45);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1218;
+      --bg-glow: rgba(213, 164, 74, 0.06);
+      --sheet: #121c24;
+      --ink: #e9e3d6;
+      --ink-soft: #93a1ab;
+      --rule: #24333d;
+      --rule-strong: #354754;
+      --navy: #1d4a6b;
+      --navy-ink: #f4efe3;
+      --brass: #d5a44a;
+      --ok: #6fbf94;
+      --bad: #e0847c;
+      --warn: #e0b25f;
+      --neutral: #9aa8b2;
+      --shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(circle at 12% -10%, var(--bg-glow), transparent 42%),
+      repeating-linear-gradient(0deg, transparent 0 31px, rgba(125, 110, 82, 0.055) 31px 32px);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 100dvh;
+  }
+
+  .masthead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px clamp(18px, 4vw, 40px);
+    border-bottom: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--sheet) 72%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+  .mark {
+    width: 38px; height: 38px;
+    display: grid; place-items: center;
+    border: 1px solid var(--brass);
+    border-radius: 50%;
+    color: var(--brass);
+    font-family: var(--font-display);
+    font-size: 16px;
+    letter-spacing: 0.5px;
+    flex: none;
+  }
+
+  .brand-name {
+    font-family: var(--font-display);
+    font-size: 21px;
+    line-height: 1.1;
+    letter-spacing: 0.2px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    white-space: nowrap;
+  }
+
+  .brand-name small {
+    font-family: var(--font-body);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+
+  .head-actions { display: flex; align-items: center; gap: 12px; }
+
+  .secure {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+
+  .secure::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+  }
+
+  .ghost-btn {
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    border-radius: 999px;
+    padding: 8px 15px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  }
+  .ghost-btn:hover { border-color: var(--brass); color: var(--brass); }
+  .ghost-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  main {
+    min-height: 0;
+    display: grid;
+    place-items: stretch center;
+    padding: clamp(14px, 3vw, 34px) clamp(12px, 3vw, 28px);
+  }
+
+  .sheet {
+    width: min(820px, 100%);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: clamp(20px, 3.4vw, 34px) clamp(16px, 4vw, 40px) 8px;
+    scroll-behavior: smooth;
+  }
+
+  .welcome { max-width: 52ch; animation: rise 420ms ease both; }
+
+  .kicker {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--brass);
+    font-weight: 700;
+    margin: 0 0 10px;
+  }
+
+  .welcome h1 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: clamp(26px, 4vw, 36px);
+    line-height: 1.15;
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+
+  .welcome p {
+    margin: 0 0 22px;
+    color: var(--ink-soft);
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .chip {
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px dashed var(--rule-strong);
+    border-radius: 999px;
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+  .chip:hover { border-color: var(--brass); color: var(--brass); transform: translateY(-1px); }
+  .chip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  .msg { margin: 0 0 24px; animation: rise 320ms ease both; }
+
+  .msg-label {
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 7px;
+    font-weight: 700;
+  }
+
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .msg.user .msg-label { padding-right: 4px; }
+
+  .msg.user .bubble {
+    background: var(--navy);
+    color: var(--navy-ink);
+    border-radius: 14px 14px 4px 14px;
+    padding: 12px 16px;
+    max-width: min(86%, 60ch);
+    font-size: 14.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .msg.agent .bubble {
+    border-left: 2px solid var(--brass);
+    padding: 2px 0 2px 16px;
+    max-width: 68ch;
+    font-size: 15px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .msg.system .bubble {
+    border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--rule));
+    background: color-mix(in srgb, var(--bad) 7%, transparent);
+    color: var(--ink);
+    border-radius: 4px;
+    padding: 12px 15px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    max-width: 64ch;
+    overflow-wrap: anywhere;
+  }
+
+  .verdict-wrap { margin-top: 12px; max-width: 68ch; }
+
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tone);
+    background: transparent;
+    border: 1.5px solid color-mix(in srgb, var(--tone) 65%, transparent);
+    border-radius: 2px;
+    padding: 5px 9px;
+    cursor: pointer;
+    transform: rotate(-0.8deg);
+    transition: background 150ms ease, transform 150ms ease;
+  }
+  .verdict:hover { background: color-mix(in srgb, var(--tone) 9%, transparent); transform: rotate(0deg); }
+  .verdict:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
+  .verdict .chev { font-size: 9px; opacity: 0.7; }
+  .verdict[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .verdict .chev { display: inline-block; transition: transform 150ms ease; }
+
+  .verdict-allow { --tone: var(--ok); }
+  .verdict-block, .verdict-error { --tone: var(--bad); }
+  .verdict-redacted { --tone: var(--warn); }
+  .verdict-skip { --tone: var(--neutral); }
+
+  .layers {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 10px 0 0;
+    border-top: 1px dashed var(--rule-strong);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--ink-soft);
+  }
+  .layers[hidden] { display: none; }
+  .layers li { display: flex; gap: 8px; }
+  .layers .layer-name { color: var(--ink); min-width: 92px; }
+  .layers .layer-state { color: var(--tone); text-transform: uppercase; letter-spacing: 0.06em; }
+  .layers .layer-reason { overflow-wrap: anywhere; }
+
+  .composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 14px clamp(16px, 4vw, 40px) 10px;
+    border-top: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--sheet) 88%, var(--bg));
+  }
+
+  .composer textarea {
+    flex: 1;
+    min-height: 46px;
+    max-height: 160px;
+    resize: none;
+    font-family: var(--font-body);
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--sheet);
+    border: 1px solid var(--rule-strong);
+    border-radius: 10px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .composer textarea::placeholder { color: var(--ink-soft); opacity: 0.8; }
+  .composer textarea:focus { border-color: var(--brass); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 16%, transparent); }
+
+  .send-btn {
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--navy-ink);
+    background: var(--navy);
+    border: 1px solid var(--navy);
+    border-radius: 10px;
+    padding: 13px 20px;
+    min-height: 46px;
+    cursor: pointer;
+    transition: background 160ms ease, opacity 160ms ease, transform 160ms ease;
+  }
+  .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--navy) 86%, var(--brass)); }
+  .send-btn:active:not(:disabled) { transform: translateY(1px); }
+  .send-btn:disabled { opacity: 0.45; cursor: progress; }
+  .send-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  .footnote {
+    margin: 0;
+    padding: 0 clamp(16px, 4vw, 40px) 14px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    background: color-mix(in srgb, var(--sheet) 88%, var(--bg));
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(7px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  @media (max-width: 560px) {
+    .secure { display: none; }
+    .brand-name { font-size: 19px; }
+    .brand-name small { display: none; }
+    .masthead { padding: 14px 16px; }
+    .mark { width: 32px; height: 32px; font-size: 14px; }
+    .msg.agent .bubble { max-width: 100%; }
+    .msg.user .bubble { max-width: 92%; }
+    .layers .layer-name { min-width: 78px; }
+    .send-btn { padding: 13px 16px; }
+  }
+</style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">VB</span>
+      <div class="brand-name">VinBank <small>Trợ lý số</small></div>
+    </div>
+    <div class="head-actions">
+      <span class="secure">Guardrails đang bật</span>
+      <button id="new-chat" class="ghost-btn" type="button">Cuộc trò chuyện mới</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="sheet" aria-label="Khung chat VinBank">
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+      <form id="composer" class="composer">
+        <label class="sr-only" for="input">Câu hỏi của bạn</label>
+        <textarea id="input" rows="1" maxlength="4000"
+          placeholder="Hỏi về tài khoản, giao dịch, lãi suất…"></textarea>
+        <button id="send" class="send-btn" type="submit">Gửi</button>
+      </form>
+      <p class="footnote">Mỗi câu trả lời đều đi qua giới hạn tốc độ, kiểm tra đầu vào và kiểm tra đầu ra. Không nhập mật khẩu hay mã OTP.</p>
+    </section>
+  </main>
+
+  <noscript><p style="padding:16px">Trình duyệt cần JavaScript để dùng khung chat này.</p></noscript>
+
+<script>
+(function () {
+  "use strict";
+
+  var messagesEl = document.getElementById("messages");
+  var inputEl = document.getElementById("input");
+  var sendEl = document.getElementById("send");
+  var formEl = document.getElementById("composer");
+  var newChatEl = document.getElementById("new-chat");
+
+  var STATUS_LABEL = {
+    ALLOW: "Đã cho qua",
+    BLOCK: "Đã chặn",
+    REDACTED: "Đã che dữ liệu",
+    ERROR: "Lỗi hệ thống",
+    SKIP: "Bỏ qua"
+  };
+  var STATUS_CLASS = {
+    ALLOW: "verdict-allow",
+    BLOCK: "verdict-block",
+    REDACTED: "verdict-redacted",
+    ERROR: "verdict-error",
+    SKIP: "verdict-skip"
+  };
+  var LAYER_LABEL = {
+    rate_limit: "Giới hạn tốc độ",
+    input: "Đầu vào",
+    output: "Đầu ra",
+    model: "Mô hình"
+  };
+
+  function newSessionId() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+    } catch (err) { /* fall through */ }
+    return "s-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function loadSessionId() {
+    try {
+      var existing = window.sessionStorage.getItem("vinbank_chat_session");
+      if (existing) return existing;
+      var created = newSessionId();
+      window.sessionStorage.setItem("vinbank_chat_session", created);
+      return created;
+    } catch (err) {
+      return newSessionId();
+    }
+  }
+
+  var sessionId = loadSessionId();
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (typeof text === "string") node.textContent = text;
+    return node;
+  }
+
+  function scrollToEnd() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addUserMessage(text) {
+    var wrap = el("div", "msg user");
+    wrap.appendChild(el("div", "msg-label", "Bạn"));
+    wrap.appendChild(el("div", "bubble", text));
+    messagesEl.appendChild(wrap);
+    scrollToEnd();
+  }
+
+  function addAgentMessage(text) {
+    var wrap = el("div", "msg agent");
+    wrap.appendChild(el("div", "msg-label", "VinBank"));
+    wrap.appendChild(el("div", "bubble", text));
+    messagesEl.appendChild(wrap);
+    scrollToEnd();
+    return wrap;
+  }
+
+  function addSystemMessage(text) {
+    var wrap = el("div", "msg system");
+    wrap.appendChild(el("div", "msg-label", "Hệ thống"));
+    wrap.appendChild(el("div", "bubble", text));
+    messagesEl.appendChild(wrap);
+    scrollToEnd();
+    return wrap;
+  }
+
+  function addVerdict(parent, verdict) {
+    var status = verdict && STATUS_LABEL[verdict.status] ? verdict.status : "ERROR";
+    var layers = (verdict && Array.isArray(verdict.layers)) ? verdict.layers : [];
+    var wrap = el("div", "verdict-wrap");
+    var badge = el("button", "verdict " + (STATUS_CLASS[status] || "verdict-skip"));
+    badge.type = "button";
+    badge.setAttribute("aria-expanded", "false");
+    badge.appendChild(el("span", "", "Guardrail · " + (STATUS_LABEL[status] || status)));
+    badge.appendChild(el("span", "chev", "›"));
+
+    if (layers.length === 0) {
+      wrap.appendChild(badge);
+      parent.appendChild(wrap);
+      return;
+    }
+
+    var list = el("ul", "layers");
+    list.hidden = true;
+    list.id = "layers-" + Math.random().toString(36).slice(2);
+    badge.setAttribute("aria-controls", list.id);
+
+    layers.forEach(function (layer) {
+      var item = el("li");
+      item.appendChild(el("span", "layer-name", LAYER_LABEL[layer.name] || layer.name || "?"));
+      item.appendChild(el("span", "layer-state", STATUS_LABEL[layer.verdict] || layer.verdict || "?"));
+      if (layer.reason) {
+        item.appendChild(el("span", "layer-reason", "— " + layer.reason));
+      }
+      list.appendChild(item);
+    });
+
+    badge.addEventListener("click", function () {
+      var open = badge.getAttribute("aria-expanded") === "true";
+      badge.setAttribute("aria-expanded", open ? "false" : "true");
+      list.hidden = open;
+    });
+
+    wrap.appendChild(badge);
+    wrap.appendChild(list);
+    parent.appendChild(wrap);
+    scrollToEnd();
+  }
+
+  function addWelcome() {
+    var wrap = el("div", "welcome");
+    wrap.appendChild(el("p", "kicker", "VinBank · Trợ lý số"));
+    wrap.appendChild(el("h1", "", "Xin chào."));
+    wrap.appendChild(el("p", "",
+      "Tôi có thể giải đáp về tài khoản, giao dịch, tiết kiệm, vay và thẻ tín dụng. " +
+      "Mỗi câu trả lời đều được kiểm tra an toàn trước khi gửi đến bạn."));
+
+    var chips = el("div", "chips");
+    [
+      "Lãi suất tiết kiệm 12 tháng là bao nhiêu?",
+      "Tôi muốn mở thẻ tín dụng VinBank",
+      "Hướng dẫn chuyển khoản trong nước"
+    ].forEach(function (text) {
+      var chip = el("button", "chip", text);
+      chip.type = "button";
+      chip.addEventListener("click", function () {
+        inputEl.value = text;
+        resizeInput();
+        inputEl.focus();
+      });
+      chips.appendChild(chip);
+    });
+    wrap.appendChild(chips);
+    messagesEl.appendChild(wrap);
+  }
+
+  function resetConversation() {
+    sessionId = newSessionId();
+    try { window.sessionStorage.setItem("vinbank_chat_session", sessionId); } catch (err) { /* ignore */ }
+    messagesEl.replaceChildren();
+    addWelcome();
+    inputEl.value = "";
+    resizeInput();
+    inputEl.focus();
+  }
+
+  function resizeInput() {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+  }
+
+  function setPending(pending) {
+    sendEl.disabled = pending;
+    formEl.setAttribute("aria-busy", pending ? "true" : "false");
+  }
+
+  function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text || sendEl.disabled) return;
+
+    addUserMessage(text);
+    inputEl.value = "";
+    resizeInput();
+    setPending(true);
+
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: text })
+    })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: response.ok, status: response.status, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        var data = result.data;
+        if (!result.ok) {
+          var target = addSystemMessage(data.error || "Không thể gửi tin nhắn. Vui lòng thử lại.");
+          if (data.verdict) addVerdict(target, data.verdict);
+          return;
+        }
+        var parent = addAgentMessage(data.reply || "(Không có nội dung trả lời)");
+        if (data.verdict) addVerdict(parent, data.verdict);
+      })
+      .catch(function () {
+        addSystemMessage("Mất kết nối tới máy chủ. Kiểm tra lại và thử gửi lần nữa.");
+      })
+      .finally(function () {
+        setPending(false);
+        inputEl.focus();
+      });
+  }
+
+  formEl.addEventListener("submit", function (event) {
+    event.preventDefault();
+    sendMessage();
+  });
+
+  inputEl.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  inputEl.addEventListener("input", resizeInput);
+
+  newChatEl.addEventListener("click", resetConversation);
+
+  addWelcome();
+  resizeInput();
+})();
+</script>
+</body>
+</html>

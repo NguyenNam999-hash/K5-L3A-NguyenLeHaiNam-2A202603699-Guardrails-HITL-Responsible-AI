@@ -9,12 +9,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
+
+_SRC_DIR = Path(__file__).resolve().parents[1]
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _MAX_BODY = 8192
@@ -66,6 +71,7 @@ class ChatApp:
         )
         self.max_turns = max_turns
         self._pair = None
+        self.recorder = None
         self._lock = threading.Lock()
         self._sessions: dict[str, tuple[list[dict], float]] = {}
 
@@ -114,7 +120,9 @@ class ChatApp:
             return {"error": f"message too long (max {_MAX_MESSAGE} chars)"}, 400
 
         with self._lock:
-            recorder = VerdictRecorder()
+            if self.recorder is None:
+                self.recorder = VerdictRecorder()
+            recorder = self.recorder
             recorder.reset()
             now = time.monotonic()
             self._prune_sessions(now)

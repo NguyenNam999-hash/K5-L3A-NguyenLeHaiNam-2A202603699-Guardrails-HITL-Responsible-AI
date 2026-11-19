@@ -1,7 +1,17 @@
 import asyncio
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 from webui.server import ChatApp, MissingApiKey
 
+ROOT = Path(__file__).resolve().parents[2]
 
 class _FakeRunner:
     def __init__(self):
@@ -94,3 +104,63 @@ def test_blocked_turn_keeps_input_block_and_output_skip():
         ("input", "BLOCK"),
         ("output", "SKIP"),
     ]
+
+
+def test_layers_are_recorded_on_every_turn():
+    held = {}
+
+    class Recorder:
+        async def chat(self, agent, message, history=None):
+            held["recorder"].record("input", "ALLOW")
+            return "ok"
+
+    def factory(recorder):
+        held["recorder"] = recorder
+        return object(), Recorder()
+
+    app = ChatApp(pair_factory=factory)
+    first, _ = app.handle_chat("s", "one")
+    second, _ = app.handle_chat("s", "two")
+    assert [l["name"] for l in first["verdict"]["layers"]] == ["input", "output"]
+    assert [l["name"] for l in second["verdict"]["layers"]] == ["input", "output"]
+
+
+def test_script_entrypoint_serves_chat_without_key():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    env = dict(os.environ, OPENROUTER_API_KEY="")
+    proc = subprocess.Popen(
+        [sys.executable, "src/webui/server.py", "--port", str(port)],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.time() + 8
+        while True:
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=0.3)
+                break
+            except Exception:
+                if time.time() > deadline:
+                    raise
+                time.sleep(0.05)
+
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/chat",
+            data=json.dumps({"session_id": "s", "message": "hello"}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(request, timeout=10)
+            raise AssertionError("expected 503")
+        except urllib.error.HTTPError as err:
+            assert err.code == 503
+            body = json.loads(err.read().decode())
+            assert "OPENROUTER_API_KEY" in body["error"]
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
