@@ -22,7 +22,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-_MAX_BODY = 8192
+_MAX_BODY = 24576
 _MAX_MESSAGE = 4000
 _SESSION_TTL = 3600.0
 
@@ -136,20 +136,28 @@ class ChatApp:
                 return self._error_payload(recorder, f"model setup failed: {exc}")
 
             try:
-                reply = asyncio.run(runner.chat(agent, message, history=history))
+                reply = asyncio.run(
+                    runner.chat(
+                        agent, message, history=history, user_id=session_id
+                    )
+                )
             except Exception as exc:
                 return self._error_payload(recorder, f"model call failed: {exc}")
 
             if not any(layer["name"] == "output" for layer in recorder.layers):
                 recorder.record("output", "SKIP")
 
-            history.extend(
-                [
-                    {"role": "user", "content": message},
-                    {"role": "assistant", "content": reply},
-                ]
+            blocked = any(
+                layer["verdict"] == "BLOCK" for layer in recorder.layers
             )
-            self._save_history(session_id, history, now)
+            if not blocked:
+                history.extend(
+                    [
+                        {"role": "user", "content": message},
+                        {"role": "assistant", "content": reply},
+                    ]
+                )
+                self._save_history(session_id, history, now)
             return {"reply": reply, "verdict": recorder.verdict()}, 200
 
 

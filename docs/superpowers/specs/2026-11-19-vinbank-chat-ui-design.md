@@ -120,8 +120,9 @@ Layout:
 ### Server behavior
 
 - Bind `127.0.0.1:8000` by default; `--host`/`--port` flags to override.
-- `ThreadingHTTPServer`, request body capped at 8 KB, message capped at 4000
-  chars, JSON-only, no CORS headers.
+- `ThreadingHTTPServer`, request body capped at 24 KB, message capped at 4000
+  chars (the byte cap fits a 4000-char UTF-8 Vietnamese message), JSON-only, no
+  CORS headers.
 - Session store: in-memory dict, 20-turn cap, idle expiry 1 hour.
 - Missing `OPENROUTER_API_KEY`: server starts, `/api/chat` returns 503 with a
   clear message; UI shows it.

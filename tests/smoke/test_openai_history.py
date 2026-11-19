@@ -46,3 +46,18 @@ def test_no_history_keeps_system_and_user_only():
     agent = OpenAIAgent(name="a", instruction="SYS")
     asyncio.run(runner.chat(agent, "hello"))
     assert [m["role"] for m in fake.calls[0]["messages"]] == ["system", "user"]
+
+
+def test_user_id_reaches_input_plugins():
+    seen = []
+
+    class _Plugin:
+        async def on_user_message_callback(self, *, invocation_context, user_message):
+            seen.append(invocation_context.user_id)
+            return None
+
+    runner, _ = _runner_with_fake_client()
+    runner.plugins = [_Plugin()]
+    agent = OpenAIAgent(name="a", instruction="SYS")
+    asyncio.run(runner.chat(agent, "hello", user_id="sess-9"))
+    assert seen == ["sess-9"]

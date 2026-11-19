@@ -19,7 +19,7 @@
 - Layer names, exact: `rate_limit`, `input`, `output`, `model`.
 - Verdict JSON shape, exact: `{"status": "...", "layers": [{"name": "...", "verdict": "...", "reason": "..."}]}`.
 - `pytest tests/smoke -q` must pass with no API key and no network.
-- Default bind `127.0.0.1:8000`; request body cap 8 KB; message cap 4000 chars; 20-turn history cap.
+- Default bind `127.0.0.1:8000`; request body cap 24 KB (fits 4000 UTF-8 chars); message cap 4000 chars; 20-turn history cap.
 - `OPENROUTER_API_KEY` never reaches the browser.
 
 ## Review Focus
@@ -41,7 +41,7 @@
 
 **Interfaces:**
 - Consumes: existing `OpenAIRunner`, `OpenAIAgent`.
-- Produces: `async def chat(self, agent: OpenAIAgent, user_message: str, history: list[dict] | None = None) -> str` — history entries are `{"role": "user"|"assistant", "content": str}`, inserted after the system message and before the new user message. Passing `None` keeps today's exact behavior.
+- Produces: `async def chat(self, agent: OpenAIAgent, user_message: str, history: list[dict] | None = None, user_id: str = "student") -> str` — history entries are `{"role": "user"|"assistant", "content": str}`, inserted after the system message and before the new user message. `user_id` is passed to input plugins (default keeps old behavior). Passing `None` history keeps today's exact behavior.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -376,7 +376,8 @@ Required behavior:
 - `handle_chat`: strip the message; empty → `400 {"error": "message is required"}`; longer than 4000 chars → `400 {"error": "message too long (max 4000 chars)"}`; non-string `session_id` or empty → generate `uuid4().hex`.
 - Lazily build the pair on first call, cache it; `MissingApiKey` → `503 {"error": str(e)}`; other construction exceptions → `502` with a `model` ERROR layer.
 - Each turn: `recorder.reset()`, copy the session history, run `asyncio.run(runner.chat(agent, message, history=history))` under a `threading.Lock` (Blue has one shared runner; concurrent requests must not interleave recorder state).
-- On success append the user turn and the reply to the session history, then trim to `max_turns * 2` messages. Do the same on a blocked reply.
+- On success, append the user turn and the reply to session history, then trim to `max_turns * 2` messages. If any layer recorded `BLOCK`, do not save the turn: blocked input must never be replayed into later model context.
+- Pass the session id as `user_id` to `runner.chat`, so the rate limiter buckets per session.
 - Ensure the payload always has an `output` layer: if the wrapper never recorded one, append `{"name": "output", "verdict": "SKIP"}`. Append the `model` ERROR layer after it, so `model` is always last.
 - `http_status` is 200 for every guardrail verdict including BLOCK; model failure is 502.
 - Handler: `GET /` and `GET /index.html` serve `src/webui/static/index.html` as `text/html; charset=utf-8`; `POST /api/chat` parses JSON, caps the body at 8192 bytes (413 beyond), calls `handle_chat`, returns `application/json`; anything else 404. Do not log message text unless `--debug`.
