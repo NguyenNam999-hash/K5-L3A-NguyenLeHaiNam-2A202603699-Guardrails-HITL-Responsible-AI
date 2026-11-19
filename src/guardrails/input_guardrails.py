@@ -10,8 +10,13 @@ Status convention (không dùng True/False mơ hồ):
 """
 from __future__ import annotations
 
+import base64
+import codecs
+import html
 import re
+import unicodedata
 from typing import Literal
+from urllib.parse import unquote
 
 from google.genai import types
 from google.adk.plugins import base_plugin
@@ -42,6 +47,93 @@ InputStatus = Literal["ALLOW", "BLOCK"]
 # Regex is one signal, not the whole security boundary.
 # ============================================================
 
+ZERO_WIDTH = "\u200b\u200c\u200d\ufeff\u2060"
+_INVISIBLE = ZERO_WIDTH + "\u00ad\u180e\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\ufe0e\ufe0f"
+_B64_TOKEN = re.compile(r"[A-Za-z0-9+/_-]{12,}={0,2}")
+_HEX_TOKEN = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
+
+
+def _normalize(text: str) -> str:
+    """NFKC, strip invisibles, collapse whitespace, then casefold."""
+    normalized = unicodedata.normalize("NFKC", text or "")
+    normalized = normalized.translate(str.maketrans("", "", _INVISIBLE))
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized.casefold()
+
+
+def _compact(text: str) -> str:
+    """Remove every separator so ``i.g.n.o.r.e`` -> ``ignore``."""
+    return re.sub(r"[\W_]+", "", _normalize(text))
+
+
+def _compact_pattern(pattern: str) -> str:
+    """Turn a spaced regex into one that matches the compact view."""
+    return (
+        pattern.replace(r"\s+", "")
+        .replace(r"\s*", "")
+        .replace(r"\b", "")
+    )
+
+
+def _looks_like_text(value: str) -> bool:
+    if not value:
+        return False
+    readable = sum(
+        1
+        for ch in value
+        if ch.isalnum() or ch.isspace() or ch in ".,;:!?-_/@'\"()"
+    )
+    return readable / len(value) >= 0.85
+
+
+def _decoded_views(text: str) -> list[str]:
+    """Original plus common encodings (URL, HTML, ROT13, base64, hex)."""
+    views = [text]
+    for decoded in (unquote(text), html.unescape(text)):
+        if decoded and decoded != text:
+            views.append(decoded)
+    rot13 = codecs.decode(text, "rot_13")
+    if rot13 and rot13 != text:
+        views.append(rot13)
+
+    for token in _B64_TOKEN.findall(text):
+        padded = token.replace("-", "+").replace("_", "/")
+        padded += "=" * (-len(padded) % 4)
+        try:
+            decoded = base64.b64decode(padded, altchars=b"-_", validate=False)
+            as_text = decoded.decode("utf-8", errors="ignore")
+        except (ValueError, TypeError):
+            continue
+        if _looks_like_text(as_text):
+            views.append(as_text)
+
+    for token in _HEX_TOKEN.findall(text):
+        try:
+            as_text = bytes.fromhex(token).decode("utf-8", errors="ignore")
+        except ValueError:
+            continue
+        if _looks_like_text(as_text):
+            views.append(as_text)
+
+    unique: list[str] = []
+    for view in views:
+        if view not in unique:
+            unique.append(view)
+    return unique
+
+
+def _matches_injection(view: str, patterns: list[str]) -> bool:
+    normalized = _normalize(view)
+    compact = _compact(view)
+    for pattern in patterns:
+        if re.search(pattern, normalized, re.IGNORECASE):
+            return True
+        compacted = _compact_pattern(pattern)
+        if compacted and re.search(compacted, compact):
+            return True
+    return False
+
+
 def detect_injection(user_input: str) -> InputStatus:
     """Detect prompt injection patterns in user input.
 
@@ -52,13 +144,21 @@ def detect_injection(user_input: str) -> InputStatus:
         ``"BLOCK"`` if injection detected (chặn), ``"ALLOW"`` otherwise (cho qua).
     """
     INJECTION_PATTERNS = [
-        # TODO: Add at least 5 regex patterns
-        # Example:
-        # r"ignore (all )?(previous|above) instructions",
+        r"\bignore\s+(?:all\s+|any\s+|the\s+)?(?:previous|above|prior|earlier)\s+(?:instructions?|directives?|rules?)",
+        r"\b(?:disregard|forget|override)\s+(?:all\s+|any\s+)?(?:previous|above|prior|earlier)?\s*(?:instructions?|rules?|directives?)",
+        r"\byou\s+are\s+now\b",
+        r"\bsystem\s+(?:prompt|override|message)\b",
+        r"\b(?:reveal|show|print|repeat|leak)\s+(?:me\s+)?(?:your\s+)?(?:instructions?|prompt|system\s+prompt)",
+        r"\bpretend\s+(?:that\s+)?(?:you\s+are|to\s+be)\b",
+        r"\bact\s+as\s+(?:a\s+|an\s+)?(?:unrestricted|jailbroken|dan|developer\s+mode)\b",
+        r"\bdeveloper\s+mode\b",
+        r"\bdan\s+mode\b",
+        r"\b(?:bỏ|bo)\s+qua\s+(?:mọi\s+|moi\s+)?(?:hướng\s+dẫn|huong\s+dan|chỉ\s+dẫn|chi\s+dan)",
+        r"\btiết\s+lộ\s+(?:mật\s*khẩu|mat\s*khau|api|thông\s*tin\s*nội\s*bộ)",
     ]
 
-    for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, user_input, re.IGNORECASE):
+    for view in _decoded_views(user_input or ""):
+        if _matches_injection(view, INJECTION_PATTERNS):
             return "BLOCK"
     return "ALLOW"
 
@@ -84,14 +184,13 @@ def topic_filter(user_input: str) -> InputStatus:
         ``"BLOCK"`` = chặn (off-topic hoặc topic cấm).
         ``"ALLOW"`` = cho qua (câu banking hợp lệ).
     """
-    input_lower = user_input.lower()
+    text = _compact(user_input)
 
-    # TODO: Implement logic:
-    # 1. If input contains any blocked topic -> return "BLOCK"
-    # 2. If input doesn't contain any allowed topic -> return "BLOCK"
-    # 3. Otherwise -> return "ALLOW"
-
-    pass  # Replace with your implementation
+    if any(_compact(topic) in text for topic in BLOCKED_TOPICS):
+        return "BLOCK"
+    if not any(_compact(topic) in text for topic in ALLOWED_TOPICS):
+        return "BLOCK"
+    return "ALLOW"
 
 
 # ============================================================
@@ -144,14 +243,21 @@ class InputGuardrailPlugin(base_plugin.BasePlugin):
         self.total_count += 1
         text = self._extract_text(user_message)
 
-        # TODO: Implement logic:
-        # 1. Call detect_injection(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 2. Call topic_filter(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 3. If both return "ALLOW": return None (let message through)
+        if detect_injection(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I cannot process that request. "
+                "I only help with VinBank banking questions."
+            )
 
-        pass  # Replace with your implementation
+        if topic_filter(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I'm a VinBank assistant and can only help with "
+                "banking-related questions."
+            )
+
+        return None
 
 
 # ============================================================

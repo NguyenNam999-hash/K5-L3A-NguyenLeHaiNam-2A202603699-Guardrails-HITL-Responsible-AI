@@ -169,8 +169,28 @@ def get_openai_api_key() -> str:
     return os.environ.get("OPENAI_API_KEY", "").strip()
 
 
+def get_red_api_key() -> str:
+    """Red key: optional dedicated key, else the OpenAI key."""
+    return (
+        os.environ.get("RED_TEAM_API_KEY", "").strip() or get_openai_api_key()
+    )
+
+
+def get_red_api_key_env_var() -> str:
+    return "RED_TEAM_API_KEY" if os.environ.get("RED_TEAM_API_KEY", "").strip() else "OPENAI_API_KEY"
+
+
+def get_openai_base_url() -> str | None:
+    """Optional OpenAI-compatible gateway (OpenRouter, proxy, ...)."""
+    return os.environ.get("OPENAI_BASE_URL", "").strip() or None
+
+
 def red_openai_client_kwargs() -> dict:
-    return {"api_key": get_openai_api_key() or None}
+    kwargs = {"api_key": get_red_api_key() or None}
+    base_url = get_openai_base_url()
+    if base_url:
+        kwargs["base_url"] = base_url
+    return kwargs
 
 
 def red_provider_label(tier: str = "advance") -> str:
@@ -250,7 +270,7 @@ def setup_api_key():
         os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "0"
         print(f"Red / Red Advance  — gemini:{model}")
     else:
-        if not get_openai_api_key():
+        if not get_red_api_key():
             os.environ["OPENAI_API_KEY"] = input("Enter OpenAI API Key (Red): ").strip()
         print(f"Red / Red Advance  — openai:{model}")
 
