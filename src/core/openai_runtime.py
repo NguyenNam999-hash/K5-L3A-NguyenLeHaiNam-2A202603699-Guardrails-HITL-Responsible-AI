@@ -51,7 +51,12 @@ class OpenAIRunner:
 
         return OpenAI(**(self.client_kwargs or {}))
 
-    async def chat(self, agent: OpenAIAgent, user_message: str) -> str:
+    async def chat(
+        self,
+        agent: OpenAIAgent,
+        user_message: str,
+        history: list[dict] | None = None,
+    ) -> str:
         for hook in self.input_hooks:
             blocked = hook(user_message)
             if blocked:
@@ -61,13 +66,15 @@ class OpenAIRunner:
         if block_msg is not None:
             return block_msg
 
+        messages = [
+            {"role": "system", "content": agent.instruction},
+            *list(history or []),
+            {"role": "user", "content": user_message},
+        ]
         client = self._client()
         completion = client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": agent.instruction},
-                {"role": "user", "content": user_message},
-            ],
+            messages=messages,
             temperature=self.temperature,
         )
         text = (completion.choices[0].message.content or "").strip()
