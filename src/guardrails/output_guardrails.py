@@ -14,6 +14,26 @@ from google.adk.plugins import base_plugin
 
 from core.utils import chat_with_agent
 
+# Public VinBank contact details. PII matches in this list are not redacted.
+UNREDACTED = frozenset({
+    "1900 545 467",
+    "1900545467",
+    "support@vinbank.example",
+})
+
+
+def _canonical_contact(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (value or "").casefold())
+
+
+_UNREDACTED_CANONICAL = frozenset(
+    _canonical_contact(value) for value in UNREDACTED
+)
+
+
+def _is_public_contact(value: str) -> bool:
+    return _canonical_contact(value) in _UNREDACTED_CANONICAL
+
 
 # ============================================================
 # Implement content_filter()
@@ -41,19 +61,53 @@ def content_filter(response: str) -> dict:
 
     # PII patterns to check
     PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+        "phone": r"(?<!\d)0\d{9,10}(?!\d)",
+        "phone_intl": r"(?<!\w)\+84[\s.-]?(?:\d[\s.-]?){8,10}\d(?!\d)",
+        "national_id": r"\b\d{9}\b|\b\d{12}\b",
+        "national_id_spaced": r"(?<!\d)\d{3}(?:[ .]\d{3}){2,3}(?!\d)",
+        "phone_spaced": r"(?<!\d)0\d{2,3}(?:[\s.-]\d{2,4}){2,3}(?!\d)",
+        "email": r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}",
+        "name": (
+            r"\b(?:full\s+name|customer\s+name|account\s+holder|name|"
+            r"họ\s+tên|ho\s+ten)\s*(?:is|[:=])\s*"
+            r"[^\W\d_]+(?:\s+[^\W\d_]+){0,3}"
+        ),
+        "address": (
+            r"\b(?:address|residential\s+address|địa\s*chỉ|dia\s*chi)"
+            r"\s*(?:is|[:=])\s*[^\n;]{5,120}"
+        ),
+        "dob": (
+            r"\b(?:date\s+of\s+birth|dob|birthday|ngày\s+sinh|ngay\s+sinh)"
+            r"\s*(?:is|[:=])?\s*"
+            r"(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2})"
+        ),
+        "account_number": (
+            r"\b(?:account\s*(?:number|no\.?|#)|"
+            r"acc(?:ount)?\s*(?:number|no\.?|#)|"
+            r"số\s+tài\s+khoản|so\s+tai\s+khoan|stk)"
+            r"\s*(?:is|[:=])?\s*\d(?:[\s-]?\d){5,23}"
+        ),
+        "card_number": r"(?<!\d)(?:\d{4}[ -]){3}\d{4}(?!\d)",
+        "api_key": r"sk-[a-zA-Z0-9-]{4,}",
+        "password": r"(?:password|passwd|mật\s*khẩu)\s*(?:is|[:=])\s*[^\s,.;]+",
+        "demo_admin_password": r"\badmin123\b",
+        "db_host": r"\bdb\.vinbank\.internal(?::\d+)?\b",
     }
 
     for name, pattern in PII_PATTERNS.items():
-        matches = re.findall(pattern, response, re.IGNORECASE)
-        if matches:
-            issues.append(f"{name}: {len(matches)} found")
-            redacted = re.sub(pattern, "[REDACTED]", redacted, flags=re.IGNORECASE)
+        redacted_count = 0
+
+        def _replace(match, _pattern_name=name):
+            nonlocal redacted_count
+            value = match.group(0)
+            if _is_public_contact(value):
+                return value
+            redacted_count += 1
+            return "[REDACTED]"
+
+        redacted = re.sub(pattern, _replace, redacted, flags=re.IGNORECASE)
+        if redacted_count:
+            issues.append(f"{name}: {redacted_count} found")
 
     return {
         "safe": len(issues) == 0,
@@ -172,16 +226,29 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        result = content_filter(response_text)
+        if not result["safe"]:
+            self.redacted_count += 1
+            llm_response.content = types.Content(
+                role="model",
+                parts=[types.Part.from_text(text=result["redacted"])],
+            )
 
-        return llm_response  # TODO: modify if needed
+        if self.use_llm_judge:
+            verdict = await llm_safety_check(response_text)
+            if not verdict["safe"]:
+                self.blocked_count += 1
+                llm_response.content = types.Content(
+                    role="model",
+                    parts=[
+                        types.Part.from_text(
+                            text="I cannot share that response. "
+                            "Please ask a VinBank banking question."
+                        )
+                    ],
+                )
+
+        return llm_response
 
 
 # ============================================================
